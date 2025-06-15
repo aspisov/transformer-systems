@@ -3,7 +3,7 @@ name = "cs336-systems"
 version = "1.0.4"
 description = "CS336 Assignment 2 - Systems"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "cs336-basics",
     "humanfriendly",
@@ -11,11 +11,13 @@ dependencies = [
     "numpy",
     "pytest>=8",
     "regex>=2024.11.6",
-    "torch~=2.6.0; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    "torch==2.7.0+cu128; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     "torch~=2.2.2; sys_platform == 'darwin' and platform_machine == 'x86_64'", # Intel Macs
     "tqdm>=4.67.1",
     "wandb>=0.19.7",
     "pandas>=2",
+    "torchvision==0.22.0+cu128; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    "torchaudio==2.7.0+cu128; sys_platform != 'darwin' or platform_machine != 'x86_64'",
 ]
 
 [tool.setuptools.packages.find]
@@ -27,6 +29,11 @@ python-preference = "managed"
 
 [tool.uv.sources]
 cs336-basics = { path = "./cs336-basics", editable = true }  # Change this path to your assignment1-basics repo you want to use your own implementation!
+
+[[tool.uv.index]]
+url = "https://download.pytorch.org/whl/cu128"
+
+
 
 
 [tool.pytest.ini_options]

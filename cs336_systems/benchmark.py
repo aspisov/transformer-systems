@@ -1,7 +1,9 @@
 import timeit
+import gc
 
 import numpy as np
 import torch
+
 from cs336_basics.model import BasicsTransformerLM
 from cs336_basics.nn_utils import cross_entropy
 
@@ -10,28 +12,30 @@ def benchmark(
     hyperparameters: dict[str, int],
     warm_up_steps: int,
     steps: int,
+    device: torch.device,
     batch_size: int = 4,
-    device: torch.device | None = None,
     include_backward: bool = False,
     mixed_precision: bool = False,
 ) -> dict[str, dict[str, float]]:
     """
     Benchmark the performance of the transformer model.
-
-    Args:
-        hyperparameters: Model hyperparameters dictionary
-        warm_up_steps: Number of warm-up steps before timing
-        steps: Number of steps to time
-        batch_size: Batch size for random data
-        device: Device to run benchmark on
-        include_backward: Whether to include backward pass in timing
-
-    Returns:
-        dict: Dictionary containing benchmark metrics where each value is a dict with 'mean' and 'std':
-            - forward_time: {"mean": mean_time, "std": std_time} for forward pass
-            - total_time: {"mean": mean_time, "std": std_time} for total step time
-            - backward_time: {"mean": mean_time, "std": std_time} for backward pass (if include_backward=True)
     """
+    device_type = device.type if device.type in ["cuda", "mps"] else "cpu"
+
+    if mixed_precision:
+        if device.type == "cuda" and torch.cuda.is_bf16_supported():
+            autocast_dtype = torch.bfloat16
+            print("Using BF16 autocast")
+        elif device.type == "cuda":
+            autocast_dtype = torch.float16
+            print("Using FP16 autocast (BF16 not supported)")
+        elif device.type == "cpu":
+            autocast_dtype = torch.bfloat16
+            print("Using BF16 autocast on CPU")
+        else:
+            autocast_dtype = torch.float16
+            print("Using FP16 autocast")
+
     model = BasicsTransformerLM(**hyperparameters).to(device)
 
     data = torch.randint(
@@ -63,7 +67,7 @@ def benchmark(
         if include_backward:
             forward_start = timeit.default_timer()
             if mixed_precision:
-                with torch.autocast(device_type="mps", dtype=torch.float16):
+                with torch.autocast(device_type=device_type, dtype=autocast_dtype):
                     logits = model(data)
             else:
                 logits = model(data)
@@ -84,7 +88,7 @@ def benchmark(
             with torch.no_grad():
                 forward_start = timeit.default_timer()
                 if mixed_precision:
-                    with torch.autocast(device_type="mps", dtype=torch.float16):
+                    with torch.autocast(device_type=device_type, dtype=autocast_dtype):
                         model(data)
                 else:
                     model(data)
@@ -108,24 +112,35 @@ def benchmark(
 
 if __name__ == "__main__":
     hyperparameters = {
-        "vocab_size": 10000,
-        "context_length": 256,
-        "d_model": 768,
-        "num_layers": 12,
-        "num_heads": 12,
-        "d_ff": 2048,
+        "vocab_size": 16384,
+        "context_length": 512,
+        "d_model": 1024,
+        "num_layers": 32,
+        "num_heads": 16,
+        "d_ff": 4096,
         "rope_theta": 10000,
     }
 
-    device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        print("Using CUDA device")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+        print("Using MPS device")
+    else:
+        device = torch.device("cpu")
+        print("Using CPU device")
+    device = torch.device("cpu")
+
+    batch_size = 2
     results = benchmark(
         hyperparameters,
         warm_up_steps=5,
         steps=10,
         device=device,
-        batch_size=4,
-        include_backward=False,
-        mixed_precision=False,
+        batch_size=batch_size,
+        include_backward=True,
+        mixed_precision=True,
     )
 
     print("Benchmark Results:")
@@ -136,6 +151,6 @@ if __name__ == "__main__":
     total_mean = results["total_time"]["mean"]
 
     # Tokens per second calculation
-    tokens_per_step = 4 * hyperparameters["context_length"]  # batch_size * context_length
+    tokens_per_step = batch_size * hyperparameters["context_length"]  # batch_size * context_length
     tokens_per_second = tokens_per_step / total_mean
     print(f"\nTokens per second: {tokens_per_second:.0f}")
