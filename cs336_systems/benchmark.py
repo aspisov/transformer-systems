@@ -13,6 +13,7 @@ def benchmark(
     batch_size: int = 4,
     device: torch.device | None = None,
     include_backward: bool = False,
+    mixed_precision: bool = False,
 ) -> dict[str, dict[str, float]]:
     """
     Benchmark the performance of the transformer model.
@@ -61,7 +62,11 @@ def benchmark(
 
         if include_backward:
             forward_start = timeit.default_timer()
-            logits = model(data)
+            if mixed_precision:
+                with torch.autocast(device_type="mps", dtype=torch.float16):
+                    logits = model(data)
+            else:
+                logits = model(data)
             if data.is_cuda:
                 torch.cuda.synchronize()
             forward_end = timeit.default_timer()
@@ -78,7 +83,11 @@ def benchmark(
         else:
             with torch.no_grad():
                 forward_start = timeit.default_timer()
-                model(data)
+                if mixed_precision:
+                    with torch.autocast(device_type="mps", dtype=torch.float16):
+                        model(data)
+                else:
+                    model(data)
                 if data.is_cuda:
                     torch.cuda.synchronize()
                 forward_end = timeit.default_timer()
@@ -101,15 +110,23 @@ if __name__ == "__main__":
     hyperparameters = {
         "vocab_size": 10000,
         "context_length": 256,
-        "d_model": 512,
-        "num_layers": 4,
-        "num_heads": 16,
-        "d_ff": 1344,
+        "d_model": 768,
+        "num_layers": 12,
+        "num_heads": 12,
+        "d_ff": 2048,
         "rope_theta": 10000,
     }
 
     device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
-    results = benchmark(hyperparameters, 1, 5, device=device, batch_size=4, include_backward=True)
+    results = benchmark(
+        hyperparameters,
+        warm_up_steps=5,
+        steps=10,
+        device=device,
+        batch_size=4,
+        include_backward=False,
+        mixed_precision=False,
+    )
 
     print("Benchmark Results:")
     print("-" * 40)
