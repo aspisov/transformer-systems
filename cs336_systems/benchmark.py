@@ -1,9 +1,9 @@
-import timeit
 import gc
+import timeit
 
 import numpy as np
 import torch
-
+import torch.cuda.nvtx as nvtx
 from cs336_basics.model import BasicsTransformerLM
 from cs336_basics.nn_utils import cross_entropy
 
@@ -14,8 +14,9 @@ def benchmark(
     steps: int,
     device: torch.device,
     batch_size: int = 4,
-    include_backward: bool = False,
-    mixed_precision: bool = False,
+    include_backward: bool = True,
+    mixed_precision: bool = True,
+    memory_profiler: bool = True,
 ) -> dict[str, dict[str, float]]:
     """
     Benchmark the performance of the transformer model.
@@ -36,7 +37,7 @@ def benchmark(
             autocast_dtype = torch.float16
             print("Using FP16 autocast")
 
-    model = BasicsTransformerLM(**hyperparameters).to(device)
+    model = BasicsTransformerLM(**hyperparameters, rope_theta=10000).to(device)
 
     data = torch.randint(
         0, hyperparameters["vocab_size"], size=(batch_size, hyperparameters["context_length"]), device=device
@@ -61,44 +62,62 @@ def benchmark(
     forward_times = []
     backward_times = []
     total_times = []
-    for _ in range(steps):
-        step_start = timeit.default_timer()
 
-        if include_backward:
-            forward_start = timeit.default_timer()
-            if mixed_precision:
-                with torch.autocast(device_type=device_type, dtype=autocast_dtype):
-                    logits = model(data)
-            else:
-                logits = model(data)
-            if data.is_cuda:
-                torch.cuda.synchronize()
-            forward_end = timeit.default_timer()
-            forward_times.append(forward_end - forward_start)
+    # Start recording memory history.
+    if memory_profiler:
+        torch.cuda.memory._record_memory_history(max_entries=1000000)
 
-            loss = cross_entropy(logits, labels)
+    with nvtx.range("benchmark_steps"):
+        for step in range(steps):
+            with nvtx.range(f"step_{step}"):
+                step_start = timeit.default_timer()
+                if include_backward:
+                    # Start forward pass
+                    with nvtx.range("forward_pass"):
+                        forward_start = timeit.default_timer()
+                        if mixed_precision:
+                            with torch.autocast(device_type=device_type, dtype=autocast_dtype):
+                                logits = model(data)
+                        else:
+                            logits = model(data)
+                        if data.is_cuda:
+                            torch.cuda.synchronize()
+                        forward_end = timeit.default_timer()
+                        forward_times.append(forward_end - forward_start)
 
-            backward_start = timeit.default_timer()
-            loss.backward()
-            if data.is_cuda:
-                torch.cuda.synchronize()
-            backward_end = timeit.default_timer()
-            backward_times.append(backward_end - backward_start)
-        else:
-            with torch.no_grad():
-                forward_start = timeit.default_timer()
-                if mixed_precision:
-                    with torch.autocast(device_type=device_type, dtype=autocast_dtype):
-                        model(data)
+                    loss = cross_entropy(logits, labels)
+
+                    # Start backward pass
+                    with nvtx.range("backward_pass"):
+                        backward_start = timeit.default_timer()
+                        loss.backward()
+                        if data.is_cuda:
+                            torch.cuda.synchronize()
+                        backward_end = timeit.default_timer()
+                        backward_times.append(backward_end - backward_start)
+
                 else:
-                    model(data)
-                if data.is_cuda:
-                    torch.cuda.synchronize()
-                forward_end = timeit.default_timer()
-                forward_times.append(forward_end - forward_start)
+                    with torch.no_grad():
+                        with nvtx.range("forward_pass"):
+                            forward_start = timeit.default_timer()
+                            if mixed_precision:
+                                with torch.autocast(device_type=device_type, dtype=autocast_dtype):
+                                    model(data)
+                            else:
+                                model(data)
+                            if data.is_cuda:
+                                torch.cuda.synchronize()
+                            forward_end = timeit.default_timer()
+                            forward_times.append(forward_end - forward_start)
 
-        step_end = timeit.default_timer()
-        total_times.append(step_end - step_start)
+                step_end = timeit.default_timer()
+                total_times.append(step_end - step_start)
+
+    if memory_profiler:
+        # Save a pickle file to be loaded by PyTorch's online tool.
+        torch.cuda.memory._dump_snapshot("memory_snapshot.pickle")
+        # Stop recording history.
+        torch.cuda.memory._record_memory_history(enabled=None)
 
     results = {
         "forward_time": {"mean": float(np.mean(forward_times)), "std": float(np.std(forward_times))},
@@ -110,16 +129,45 @@ def benchmark(
     return results
 
 
+small = {
+    "d_model": 768,
+    "num_layers": 12,
+    "num_heads": 12,
+    "d_ff": 3072,
+}
+
+medium = {
+    "d_model": 1024,
+    "num_layers": 24,
+    "num_heads": 16,
+    "d_ff": 4096,
+}
+
+large = {
+    "d_model": 1280,
+    "num_layers": 36,
+    "num_heads": 20,
+    "d_ff": 5120,
+}
+
+xl = {
+    "d_model": 1600,
+    "num_layers": 48,
+    "num_heads": 25,
+    "d_ff": 6400,
+}
+
+xxl = {
+    "d_model": 2560,
+    "num_layers": 32,
+    "num_heads": 32,
+    "d_ff": 10240,
+}
+
 if __name__ == "__main__":
-    hyperparameters = {
-        "vocab_size": 16384,
-        "context_length": 512,
-        "d_model": 1024,
-        "num_layers": 32,
-        "num_heads": 16,
-        "d_ff": 4096,
-        "rope_theta": 10000,
-    }
+    hyperparameters = large
+    hyperparameters.update({"vocab_size": 16384, "context_length": 512})
+    batch_size = 1
 
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -130,9 +178,7 @@ if __name__ == "__main__":
     else:
         device = torch.device("cpu")
         print("Using CPU device")
-    device = torch.device("cpu")
 
-    batch_size = 2
     results = benchmark(
         hyperparameters,
         warm_up_steps=5,
@@ -141,6 +187,7 @@ if __name__ == "__main__":
         batch_size=batch_size,
         include_backward=True,
         mixed_precision=True,
+        memory_profiler=True,
     )
 
     print("Benchmark Results:")

@@ -9,7 +9,9 @@
 - Having no warm-up steps increases the time and standard deviation. First iteration are used to prepare GPU for training. 1 and 2 warm-up steps bring the standard deviation back to the old one on mps. 
 
 ## Problem (nsys_profile): 5 points
-TODO
+(a) What is the total time spent on your forward pass? Does it match what we had measured before with the Python standard library?
+
+Deliverable: Forward pass with large model takes around 80 ms on RTX 5070 Ti
 
 ## Problem (benchmarking_mixed_precision): 2 points
 (a) Consider the following model:
@@ -55,3 +57,18 @@ Deliverable:
 (b) You should have seen that FP16 mixed precision autocasting treats the layer normalization layer differently than the feed-forward layers. What parts of layer normalization are sensitive to mixed precision? If we use BF16 instead of FP16, do we still need to treat layer normalization differently? Why or why not?
 
 Deliverable: In layer norm we need to compute $\mu$ and $\sigma^2$, which require accumulation operations that can suffer from precision loss in FP16. BF16 would help us avoid some of the overflows/underflows.
+
+
+## Problem (memory_profiling): 4 points
+
+(b) What is the peak memory usage of each context length when doing a forward pass? What about when doing a full training step?
+
+| context length | forward | forward + backward |
+| --- | --- | --- |
+| 512 | 6 GB | 13 GB |
+| 256 | 6 GB | 11 GB |
+| 128 | 6 GB | 10.3 GB|
+
+(c) Find the peak memory usage of the large model when using mixed-precision, for both a forward pass and a full optimizer step. Does mixed-precision significantly affect memory usage?
+
+Deliverable: Without mixed: 12.3 GB, with mixed precision: 12.9 GB. So mixed precision actually increases peak memory.

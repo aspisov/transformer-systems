@@ -63,3 +63,30 @@ To submit, run `./test_and_make_submission.sh` . This script will install your
 code's dependencies, run tests, and create a gzipped tarball with the output. We
 should be able to unzip your submitted tarball and run
 `./test_and_make_submission.sh` to verify your test results.
+
+
+## Setup 
+
+### Install uv
+
+```sh
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH=$HOME/.local/bin:$PATH
+```
+
+### Install NSYS
+```sh 
+apt update
+apt install -y --no-install-recommends gnupg
+echo "deb http://developer.download.nvidia.com/devtools/repos/ubuntu$(source /etc/lsb-release; echo "$DISTRIB_RELEASE" | tr -d .)/$(dpkg --print-architecture) /" | tee /etc/apt/sources.list.d/nvidia-devtools.list
+apt-key adv --fetch-keys http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/7fa2af80.pub
+apt update
+apt install nsight-systems-cli
+```
+
+## NSYS
+
+```sh
+uv run nsys profile -o result python cs336_systems/benchmark.py
+scp root@199.126.134.31:/workspace/transformer-systems/result.nsys-rep ~/Desktop/
+```
