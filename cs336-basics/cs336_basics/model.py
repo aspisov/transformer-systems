@@ -8,7 +8,6 @@ import os
 
 import einx
 import torch
-import torch.cuda.nvtx as nvtx
 import torch.nn as nn
 from einops import einsum, rearrange
 from jaxtyping import Bool, Float, Int
@@ -17,6 +16,35 @@ from torch import Tensor
 from .nn_utils import softmax
 
 logger = logging.getLogger(__name__)
+
+# Conditional NVTX import - use no-op functions when CUDA is not available
+try:
+    import torch.cuda.nvtx as nvtx
+
+    # Test if NVTX is actually available
+    nvtx.range_push("test")
+    nvtx.range_pop()
+    NVTX_AVAILABLE = True
+except (ImportError, RuntimeError):
+    # Create no-op NVTX functions when not available
+    class NoOpNVTX:
+        @staticmethod
+        def range(name):
+            def decorator(func):
+                return func
+
+            return decorator
+
+        @staticmethod
+        def range_push(name):
+            pass
+
+        @staticmethod
+        def range_pop():
+            pass
+
+    nvtx = NoOpNVTX()
+    NVTX_AVAILABLE = False
 
 
 class Linear(nn.Module):

@@ -67,15 +67,16 @@ should be able to unzip your submitted tarball and run
 
 ## Setup 
 
-### Install uv
-
 ```sh
+# Clone the repository
+git clone https://github.com/aspisov/transformer-systems.git
+cd transformer-systems
+
+# Install uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH=$HOME/.local/bin:$PATH
-```
 
-### Install NSYS
-```sh 
+# Install NSYS
 apt update
 apt install -y --no-install-recommends gnupg
 echo "deb http://developer.download.nvidia.com/devtools/repos/ubuntu$(source /etc/lsb-release; echo "$DISTRIB_RELEASE" | tr -d .)/$(dpkg --print-architecture) /" | tee /etc/apt/sources.list.d/nvidia-devtools.list
@@ -83,8 +84,6 @@ apt-key adv --fetch-keys http://developer.download.nvidia.com/compute/cuda/repos
 apt update
 apt install nsight-systems-cli
 ```
-
-## NSYS
 
 ```sh
 uv run nsys profile -o result python cs336_systems/benchmark.py
