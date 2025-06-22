@@ -72,3 +72,14 @@ Deliverable: In layer norm we need to compute $\mu$ and $\sigma^2$, which requir
 (c) Find the peak memory usage of the large model when using mixed-precision, for both a forward pass and a full optimizer step. Does mixed-precision significantly affect memory usage?
 
 Deliverable: Without mixed: 12.3 GB, with mixed precision: 12.9 GB. So mixed precision actually increases peak memory.
+
+## Problem (naive_ddp_benchmarking): 3 points
+Step 0 took 6.68 seconds
+Communication took 0.79 seconds
+Communication overhead: 11.86%
+Step 1 took 6.89 seconds
+Communication took 0.75 seconds
+Communication overhead: 10.88%
+Step 2 took 5.52 seconds
+Communication took 0.72 seconds
+Communication overhead: 13.05%

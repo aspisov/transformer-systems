@@ -1,5 +1,6 @@
 import os
 from dataclasses import dataclass
+from timeit import default_timer
 
 import numpy as np
 import torch
@@ -56,6 +57,7 @@ def train(rank: int, world_size: int, config: Config):
     optimizer = AdamW(model.parameters())
 
     for step in range(config.num_iterations):
+        step_start = default_timer()
         x, y = get_batch(
             dataset,
             batch_size=config.batch_size // world_size,
@@ -68,20 +70,41 @@ def train(rank: int, world_size: int, config: Config):
         loss = cross_entropy(logits, y)
         loss.backward()
 
+        comm_start = default_timer()
+
+        grads = []
         for param in model.parameters():
-            dist.all_reduce(tensor=param.grad, op=dist.ReduceOp.AVG, async_op=False)
+            grads.append(param.grad)
+
+        flattened_grads = torch._utils._flatten_dense_tensors(grads)
+        if device == "cuda":
+            dist.all_reduce(tensor=flattened_grads, op=dist.ReduceOp.AVG, async_op=False)
+        else:
+            dist.all_reduce(tensor=flattened_grads, async_op=False)
+            flattened_grads = flattened_grads / world_size
+        torch._utils._unflatten_dense_tensors(flattened_grads, grads)
+
+        for param, grad in zip(model.parameters(), grads):
+            param.grad = grad
+
+        comm_end = default_timer()
 
         if rank == 0:
             print(f"Step {step}, Loss: {loss.item():.4f}")
 
         optimizer.step()
         optimizer.zero_grad()
+        step_end = default_timer()
+        if rank == 0:
+            print(f"Step {step} took {step_end - step_start:.2f} seconds")
+            print(f"Communication took {comm_end - comm_start:.2f} seconds")
+            print(f"Communication overhead: {(comm_end - comm_start) / (step_end - step_start) * 100:.2f}%")
 
     cleanup()
 
 
 def main(world_size: int = 4):
-    config = Config(vocab_size=16384, context_length=128, num_iterations=100, batch_size=8, device="cpu")
+    config = Config(vocab_size=16384, context_length=128, num_iterations=3, batch_size=8, device="cpu")
 
     mp.spawn(fn=train, args=(world_size, config), nprocs=world_size, join=True)
 
