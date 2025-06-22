@@ -74,12 +74,15 @@ Deliverable: In layer norm we need to compute $\mu$ and $\sigma^2$, which requir
 Deliverable: Without mixed: 12.3 GB, with mixed precision: 12.9 GB. So mixed precision actually increases peak memory.
 
 ## Problem (naive_ddp_benchmarking): 3 points
-Step 0 took 6.68 seconds
-Communication took 0.79 seconds
-Communication overhead: 11.86%
-Step 1 took 6.89 seconds
-Communication took 0.75 seconds
-Communication overhead: 10.88%
-Step 2 took 5.52 seconds
-Communication took 0.72 seconds
-Communication overhead: 13.05%
+Step 1 took 0.21 seconds
+Communication took 0.13 seconds
+Communication overhead: 60.63%
+Step 2 took 0.21 seconds
+Communication took 0.13 seconds
+Communication overhead: 60.46%
+Step 3 took 0.21 seconds
+Communication took 0.13 seconds
+Communication overhead: 60.51%
+Step 4 took 0.21 seconds
+Communication took 0.13 seconds
+Communication overhead: 60.54%
